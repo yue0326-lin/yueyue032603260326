@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AI 助手 - 防乱码版</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+        body { background-color: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100dvh; overflow: hidden; }
+
+        .app-container { width: 100%; max-width: 430px; height: 100dvh; background-color: #ffffff; position: relative; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+
+        .swipe-zone { position: absolute; top: 0; left: 0; width: 30px; height: 100%; z-index: 50; }
+
+        /* 侧边栏 */
+        .sidebar-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); z-index: 99; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .sidebar-overlay.active { opacity: 1; pointer-events: auto; }
+        .sidebar { position: absolute; top: 0; left: -280px; width: 280px; height: 100%; background-color: #f7f8fa; z-index: 100; transition: left 0.3s ease; display: flex; flex-direction: column; border-right: 1px solid #e0e0e0; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        .sidebar.open { left: 0; }
+        .sidebar-header { padding: 20px; font-size: 16px; font-weight: bold; color: #333; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center; }
+        .settings-icon { cursor: pointer; font-size: 20px; }
+        .chat-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .chat-item { padding: 12px 15px; border-radius: 10px; font-size: 14px; color: #444; cursor: pointer; margin-bottom: 5px; display: flex; align-items: center; transition: background 0.2s; user-select: none; -webkit-user-select: none; }
+        .chat-item.active { background-color: #e2e6ec; font-weight: 600; }
+        .chat-item:active { background-color: #eef0f3; }
+        
+        .import-btn { display: flex; align-items: center; justify-content: center; gap: 5px; margin: 10px; padding: 10px; background: #eef0f3; border-radius: 10px; font-size: 14px; color: #333; cursor: pointer; border: 1px dashed #ccc; }
+        .import-btn:active { background: #e0e4e8; }
+
+        /* 主界面 */
+        .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; font-size: 18px; font-weight: 600; color: #000; z-index: 10; background-color: #fff; }
+        .top-nav .icon-btn { font-size: 22px; cursor: pointer; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; user-select: none; }
+        .top-nav .icon-btn:active { background-color: #f0f0f0; }
+        .title { font-size: 16px; font-weight: 600; color: #1a1a1a; }
+
+        .chat-content { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background-color: #fafafa; }
+        .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 15px; }
+        
+        .message-wrapper { display: flex; flex-direction: column; max-width: 85%; position: relative; animation: fadeIn 0.3s ease; }
+        .message-wrapper.user { align-self: flex-end; align-items: flex-end; }
+        .message-wrapper.bot { align-self: flex-start; align-items: flex-start; }
+
+        .message { padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.6; word-wrap: break-word; position: relative; width: 100%; }
+        .message.bot { background-color: #ffffff; border: 1px solid #e5e5e5; color: #333; border-bottom-left-radius: 4px; }
+        .message.user { background-color: #1a1a1a; color: #fff; border-bottom-right-radius: 4px; }
+        .message img { max-width: 100%; border-radius: 8px; margin-bottom: 5px; display: block; }
+        .message .msg-text { margin-top: 5px; }
+
+        .message p { margin-bottom: 8px; }
+        .message p:last-child { margin-bottom: 0; }
+        .message ul, .message ol { padding-left: 20px; margin-bottom: 8px; }
+        .message li { margin-bottom: 4px; }
+        .message strong { font-weight: 700; color: #000; }
+        .message code { background: #f0f0f0; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+        .message pre { background: #f8f8f8; padding: 10px; border-radius: 10px; overflow-x: auto; margin-bottom: 8px; }
+        .message blockquote { border-left: 3px solid #ddd; padding-left: 10px; color: #666; margin-bottom: 8px; }
+
+        .message-actions {
+            display: flex; gap: 5px; margin-top: 5px; 
+            background: rgba(255,255,255,0.9); 
+            padding: 5px 10px; border-radius: 20px; 
+            border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .message-wrapper:hover .message-actions { opacity: 1; }
+        @media (hover: none) { .message-actions { opacity: 1; padding: 5px 8px; } }
+
+        .action-icon {
+            font-size: 14px; cursor: pointer; padding: 4px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s; color: #666; user-select: none;
+        }
+        .action-icon:active { background: #eee; color: #1a1a1a; }
+
+        /* 底部输入区 */
+        .bottom-area { padding: 10px 15px 15px 15px; background-color: #fff; border-top: 1px solid #f0f0f0; flex-shrink: 0; }
+        .image-preview-area { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+        .preview-item { position: relative; width: 60px; height: 60px; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; }
+        .preview-item img { width: 100%; height: 100%; object-fit: cover; }
+        .preview-item .remove-img { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+        .input-box-wrapper { background-color: #f7f8fa; border-radius: 20px; padding: 8px 12px; display: flex; align-items: center; border: 1px solid #e0e0e0; transition: all 0.3s ease; }
+        .input-box-wrapper.draw-mode { flex-direction: column; align-items: stretch; border-radius: 15px; padding: 12px; }
+        
+        .input-row { display: flex; align-items: center; width: 100%; }
+        .input-row input { flex: 1; border: none; background: transparent; outline: none; font-size: 15px; color: #333; padding: 6px 0; }
+        .input-row input::placeholder { color: #999; }
+        
+        .draw-controls { display: none; margin-top: 10px; gap: 8px; align-items: center; border-top: 1px dashed #ccc; padding-top: 10px; }
+        .input-box-wrapper.draw-mode .draw-controls { display: flex; }
+        
+        .draw-tag { padding: 4px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; border: 1px solid #ddd; background: #fff; color: #666; }
+        .draw-tag.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+        .input-action-btn { background: transparent; border: none; font-size: 20px; cursor: pointer; padding: 0 5px; color: #666; display: flex; align-items: center; justify-content: center; }
+        .input-action-btn:active { color: #1a1a1a; }
+        .input-action-btn.active { color: #e74c3c; }
+        .send-btn { background-color: #1a1a1a; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; margin-left: 8px; transition: background 0.2s; }
+        .send-btn:active { background-color: #555; transform: scale(0.95); }
+
+        /* 弹窗通用 */
+        .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 200; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; width: 95%; max-width: 400px; max-height: 90vh; overflow-y: auto; border-radius: 15px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal h3 { margin-bottom: 15px; font-size: 18px; color: #333; }
+        .modal h4 { font-size: 14px; color: #333; margin: 15px 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .modal label { display: block; font-size: 13px; color: #666; margin-bottom: 5px; margin-top: 10px; }
+        .modal input, .modal textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; background: #fff; }
+        .modal textarea { resize: vertical; min-height: 80px; }
+        .modal input:focus, .modal textarea:focus { border-color: #1a1a1a; }
+        .flex-row { display: flex; gap: 8px; align-items: center; }
+        .flex-row input { flex: 1; }
+        .btn-small { padding: 10px 12px; background: #f0f0f0; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+        .btn-small:active { background: #ddd; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-btns button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: 600; }
+        .btn-cancel { background-color: #f0f0f0; color: #333; }
+        .btn-save { background-color: #1a1a1a; color: white; }
+        .status-text { font-size: 12px; color: #888; margin-top: 5px; display: block; min-height: 18px; }
+
+        .switch-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 8px; }
+        .switch-label { font-size: 13px; color: #333; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #1a1a1a; }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        .context-menu { position: absolute; background: white; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.15); z-index: 300; display: none; min-width: 130px; padding: 5px 0; border: 1px solid #eee; }
+        .context-menu.active { display: block; }
+        .context-menu-item { padding: 10px 15px; font-size: 14px; color: #333; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .context-menu-item:active { background-color: #f5f5f5; }
+        .context-menu-item.danger { color: #e74c3c; }
+
+        .model-list { max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 10px; margin-top: 10px; }
+        .model-list-item { padding: 12px 15px; font-size: 14px; border-bottom: 1px solid #f9f9f9; cursor: pointer; color: #333; transition: background 0.2s; }
+        .model-list-item:last-child { border-bottom: none; }
+        .model-list-item:active { background-color: #f0f0f0; }
+        .model-list-item.selected { background-color: #eef0f3; font-weight: 600; color: #000; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="app-container" id="appContainer">
+        <div class="swipe-zone" id="swipeZone"></div>
+
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <span>历史对话</span>
+                <span class="settings-icon" id="settingsBtn">⚙️</span>
+            </div>
+            <div class="chat-list" id="chatList"></div>
+            <div class="import-btn" id="importChatBtn">📁 导入对话（自动解析）</div>
+            <div class="import-btn" id="importRawTextBtn" style="margin-top:5px;">📄 导入纯文本（可多选）</div>
+            <input type="file" id="importFileInput" accept=".txt,.json" style="display: none;">
+            <input type="file" id="importRawTextInput" accept=".txt" style="display: none;" multiple>
+        </div>
+
+        <div class="top-nav">
+            <div class="icon-btn" id="menuBtn">☰</div>
+            <div class="title" id="chatTitle">新对话</div>
+            <div class="icon-btn" id="newChatBtn">⊕</div>
+        </div>
+
+        <div class="chat-content" id="chatContent">
+            <div class="empty-state" id="emptyState">开始新的对话吧</div>
+        </div>
+
+        <div class="bottom-area">
+            <div class="image-preview-area" id="imagePreviewArea"></div>
+            
+            <div class="input-box-wrapper" id="inputBoxWrapper">
+                <div class="input-row">
+                    <button class="input-action-btn" id="uploadBtn" title="上传图片">📎</button>
+                    <button class="input-action-btn" id="drawBtn" title="生图模式">🎨</button>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;" multiple>
+                    <input type="text" id="userInput" placeholder="发消息或图片..." autocomplete="off">
+                    <button class="send-btn" id="sendBtn">➤</button>
+                </div>
+                
+                <div class="draw-controls">
+                    <span style="font-size:12px; color:#888;">选择引擎:</span>
+                    <span class="draw-tag active" id="tagG">Google</span>
+                    <span class="draw-tag" id="tagNai">NAI</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设置弹窗 -->
+        <div class="modal-overlay" id="settingsModal">
+            <div class="modal">
+                <h3>⚙️ 连接配置</h3>
+                <h4>💬 聊天模型配置</h4>
+                <label>聊天中转站地址</label>
+                <input type="text" id="chatUrl" placeholder="例如: https://api.openai.com/v1/chat/completions">
+                <label>聊天 API Key</label>
+                <input type="password" id="chatKey" placeholder="sk-...">
+                <label>聊天模型名称</label>
+                <div class="flex-row">
+                    <input type="text" id="chatModel" placeholder="例如: gpt-4o">
+                    <button class="btn-small" id="fetchChatModelsBtn">拉取模型</button>
+                </div>
+                <span class="status-text" id="chatStatus"></span>
+                
+                <h4>📝 系统提示词 (角色设定)</h4>
+                <label>给 AI 的底层人设（每次对话都会自动带上）</label>
+                <textarea id="systemPrompt" placeholder="例如：你是《洛凛》故事里的角色，请保持冷漠、深情的语气..."></textarea>
+
+                <div class="switch-row">
+                    <span class="switch-label">🌊 流式输出（打字机效果）</span>
+                    <label class="switch">
+                        <input type="checkbox" id="streamEnabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div style="font-size:11px; color:#999; margin-top:5px;">* 如果回复出现乱码，请关闭流式输出</div>
+
+                <label>温度 (Temperature, 0~2)</label>
+                <input type="number" id="temperature" value="2" step="0.1" min="0" max="2">
+                <label>Top P (0~1)</label>
+                <input type="number" id="topP" value="1" step="0.1" min="0" max="1">
+
+                <div class="switch-row">
+                    <span class="switch-label">🧠 启用工具调用（让 AI 主动生图）</span>
+                    <label class="switch">
+                        <input type="checkbox" id="toolCallEnabled">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <h4>📷 识图模型配置</h4>
+                <label>识图中转站地址</label>
+                <input type="text" id="visionUrl" placeholder="例如: https://api.openai.com/v1/chat/completions">
+                <label>识图 API Key</label>
+                <input type="password" id="visionKey" placeholder="sk-...">
+                <label>识图模型名称</label>
+                <div class="flex-row">
+                    <input type="text" id="visionModel" placeholder="例如: gpt-4o">
+                    <button class="btn-small" id="fetchVisionModelsBtn">拉取模型</button>
+                </div>
+                <span class="status-text" id="visionStatus"></span>
+                <h4>🎨 Google 生图配置</h4>
+                <label>G 生图中转站地址</label>
+                <input type="text" id="gImageUrl" placeholder="例如: https://api.openai.com/v1/images/generations">
+                <label>G 生图 API Key</label>
+                <input type="password" id="gImageKey" placeholder="sk-...">
+                <label>G 生图模型名称</label>
+                <div class="flex-row">
+                    <input type="text" id="gModel" placeholder="例如: imagen-3.0-generate-002">
+                    <button class="btn-small" id="fetchGImageModelsBtn">拉取模型</button>
+                </div>
+                <label>G 生图提示词模板</label>
+                <input type="text" id="gPromptTemplate" placeholder="例如: masterpiece, best quality, 4k">
+                <span class="status-text" id="gStatus"></span>
+                <h4>🎨 NAI 生图配置</h4>
+                <label>NAI 生图中转站地址</label>
+                <input type="text" id="naiImageUrl" placeholder="例如: https://api.openai.com/v1/images/generations">
+                <label>NAI 生图 API Key</label>
+                <input type="password" id="naiImageKey" placeholder="sk-...">
+                <label>NAI 生图模型名称</label>
+                <div class="flex-row">
+                    <input type="text" id="naiModel" placeholder="例如: nai-diffusion-3">
+                    <button class="btn-small" id="fetchNaiImageModelsBtn">拉取模型</button>
+                </div>
+                <label>NAI 生图提示词模板</label>
+                <input type="text" id="naiPromptTemplate" placeholder="例如: anime style, detailed, 1girl">
+                <span class="status-text" id="naiStatus"></span>
+                <div class="modal-btns">
+                    <button class="btn-cancel" id="cancelBtn">取消</button>
+                    <button class="btn-save" id="saveBtn">保存</button>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button class="btn-small" id="testChatBtn" style="flex:1;">测试聊天</button>
+                    <button class="btn-small" id="testVisionBtn" style="flex:1;">测试识图</button>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button class="btn-small" id="testGImageBtn" style="flex:1;">测试 G 生图</button>
+                    <button class="btn-small" id="testNaiImageBtn" style="flex:1;">测试 NAI 生图</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="context-menu" id="contextMenu">
+            <div class="context-menu-item" id="renameChatBtn">✏️ 重命名</div>
+            <div class="context-menu-item" id="exportChatBtn">📤 导出为 TXT</div>
+            <div class="context-menu-item danger" id="deleteChatBtn">🗑️ 删除对话</div>
+        </div>
+
+        <div class="modal-overlay" id="renameModal">
+            <div class="modal">
+                <h3>重命名对话</h3>
+                <input type="text" id="renameInput" placeholder="输入新的对话名称">
+                <div class="modal-btns">
+                    <button class="btn-cancel" id="renameCancelBtn">取消</button>
+                    <button class="btn-save" id="renameSaveBtn">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="modelSelectModal">
+            <div class="modal">
+                <h3>选择模型</h3>
+                <div class="model-list" id="modelListContainer"></div>
+                <div class="modal-btns">
+                    <button class="btn-cancel" id="modelSelectCancelBtn">取消</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ================= 1. 全局状态 =================
+        let apiConfig = { 
+            chatUrl: 'https://api.deepseek.com/v1/chat/completions', chatKey: '', chatModel: 'deepseek-chat', toolCallEnabled: false,
+            systemPrompt: '', streamEnabled: true, temperature: 2, topP: 1,
+            visionUrl: 'https://api.openai.com/v1/chat/completions', visionKey: '', visionModel: 'gpt-4o',
+            gImageUrl: 'https://api.openai.com/v1/images/generations', gImageKey: '', gModel: 'imagen-3.0-generate-002', gPromptTemplate: '',
+            naiImageUrl: 'https://api.openai.com/v1/images/generations', naiImageKey: '', naiModel: 'nai-diffusion-3', naiPromptTemplate: ''
+        };
+        try { const saved = localStorage.getItem('my_ai_config'); if (saved) apiConfig = { ...apiConfig, ...JSON.parse(saved) }; } catch (e) {}
+
+        let chats = [{ id: 1, title: '新对话', messages: [] }];
+        let currentChatId = 1;
+        let sidebarOpen = false;
+        let contextMenuTargetId = null;
+        let pendingImages = []; 
+        let isDrawMode = false; 
+        let drawEngine = 'g'; 
+
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const chatListEl = document.getElementById('chatList');
+        const chatContent = document.getElementById('chatContent');
+        const emptyState = document.getElementById('emptyState');
+        const userInput = document.getElementById('userInput');
+        const chatTitle = document.getElementById('chatTitle');
+        const contextMenu = document.getElementById('contextMenu');
+        const renameModal = document.getElementById('renameModal');
+        const renameInput = document.getElementById('renameInput');
+        const imagePreviewArea = document.getElementById('imagePreviewArea');
+        const fileInput = document.getElementById('fileInput');
+        const inputBoxWrapper = document.getElementById('inputBoxWrapper');
+        const importFileInput = document.getElementById('importFileInput');
+        const importRawTextInput = document.getElementById('importRawTextInput');
+
+        // ================= 2. 导入与导出 =================
+        document.getElementById('importRawTextBtn').addEventListener('click', () => importRawTextInput.click());
+        importRawTextInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            const readPromises = Array.from(files).map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => resolve({ name: file.name, content: event.target.result });
+                    reader.readAsText(file);
+                });
+            });
+            Promise.all(readPromises).then(results => {
+                let combinedContent = '';
+                const prefix = "这是一段之前的历史对话（由多个文件拼接），请你阅读并接着往下扮演（保持原风格）：\n\n";
+                results.forEach((result, index) => {
+                    combinedContent += `\n\n=== 文件 ${index + 1}: ${result.name} ===\n\n`;
+                    combinedContent += result.content;
+                });
+                userInput.value = prefix + combinedContent;
+                userInput.scrollTop = userInput.scrollHeight;
+                alert(`已成功合并 ${results.length} 个文件的内容，填入输入框！\n\n请确认内容无误后，点击发送。`);
+            });
+            importRawTextInput.value = '';
+        });
+
+        document.getElementById('importChatBtn').addEventListener('click', () => importFileInput.click());
+        importFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target.result;
+                let importedMessages = [];
+                let chatTitleFromFile = file.name.replace(/\.(txt|json)$/i, '');
+                try {
+                    const json = JSON.parse(content);
+                    let rawMessages = [];
+                    if (Array.isArray(json)) rawMessages = json;
+                    else if (json.messages && Array.isArray(json.messages)) rawMessages = json.messages;
+                    if (rawMessages.length > 0) {
+                        rawMessages.forEach(msg => {
+                            let sender = 'user';
+                            if (msg.role === 'assistant' || msg.role === 'ai' || msg.role === 'bot') sender = 'bot';
+                            let text = msg.content || msg.text || msg.message || JSON.stringify(msg);
+                            if (Array.isArray(text)) text = text.map(part => part.text || '').join('');
+                            importedMessages.push({ sender: sender, text: String(text) });
+                        });
+                    }
+                } catch (jsonError) {
+                    const lines = content.split('\n');
+                    let currentSender = null, currentText = '';
+                    lines.forEach(line => {
+                        const trimmed = line.trim();
+                        if (trimmed === '') return;
+                        const match = trimmed.match(/^(用户|User|Human|我|Me|AI|Assistant|Bot|系统|System|角色)[：:]\s*(.*)$/i);
+                        if (match) {
+                            if (currentSender !== null && currentText.trim() !== '') importedMessages.push({ sender: currentSender, text: currentText.trim() });
+                            const roleStr = match[1].toLowerCase();
+                            if (roleStr.includes('用户') || roleStr.includes('user') || roleStr.includes('human') || roleStr.includes('我') || roleStr.includes('me')) currentSender = 'user';
+                            else currentSender = 'bot';
+                            currentText = match[2];
+                        } else { currentText += '\n' + trimmed; }
+                    });
+                    if (currentSender !== null && currentText.trim() !== '') importedMessages.push({ sender: currentSender, text: currentText.trim() });
+                }
+                if (importedMessages.length === 0) { alert('未能识别出标准格式。\n请使用“📄 导入纯文本”按钮直接发送。'); return; }
+                const newId = chats.length > 0 ? Math.max(...chats.map(c => c.id)) + 1 : 1;
+                chats.push({ id: newId, title: `导入: ${chatTitleFromFile}`, messages: importedMessages });
+                switchChat(newId); renderChatList(); toggleSidebar();
+                alert(`成功导入 ${importedMessages.length} 条消息！`);
+            };
+            reader.readAsText(file);
+            importFileInput.value = '';
+        });
+
+        // 【核心】导出时进行编码清洗，防止乱码
+        document.getElementById('exportChatBtn').addEventListener('click', () => {
+            const id = contextMenuTargetId;
+            const chat = chats.find(c => c.id === id);
+            if (!chat || chat.messages.length === 0) { alert('这个对话是空的，没有内容可以导出。'); contextMenu.classList.remove('active'); return; }
+            
+            let exportText = '';
+            chat.messages.forEach(msg => {
+                const role = msg.sender === 'user' ? '用户' : 'AI';
+                // 清洗文本：去掉可能引起乱码的不可见字符
+                let safeText = msg.text || '';
+                safeText = safeText.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, ''); // 去除非打印控制字符
+                // 如果内容里包含奇怪的二进制符号（常见的乱码特征），我们做个简单替换
+                // 但最主要的还是靠浏览器本身的 UTF-8 编码写入
+                
+                if (safeText) exportText += `${role}: ${safeText}\n\n`;
+                if (msg.images && msg.images.length > 0) exportText += `${role}: [包含图片]\n\n`;
+            });
+            
+            // 强制使用 UTF-8 with BOM 编码，有些手机打开 txt 会自动识别 UTF-8
+            const blob = new Blob(['\uFEFF' + exportText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${chat.title || '聊天记录'}.txt`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            contextMenu.classList.remove('active');
+            alert('聊天记录已导出！\n\n如果打开还是乱码，请在设置里关闭【流式输出】，重新聊一段再导出试试。');
+        });
+
+        // ================= 3. 设置面板逻辑 =================
+        const modal = document.getElementById('settingsModal');
+        const chatUrl = document.getElementById('chatUrl');
+        const chatKey = document.getElementById('chatKey');
+        const chatModel = document.getElementById('chatModel');
+        const systemPrompt = document.getElementById('systemPrompt');
+        const streamEnabled = document.getElementById('streamEnabled');
+        const temperature = document.getElementById('temperature');
+        const topP = document.getElementById('topP');
+        const toolCallEnabled = document.getElementById('toolCallEnabled');
+        const visionUrl = document.getElementById('visionUrl');
+        const visionKey = document.getElementById('visionKey');
+        const visionModel = document.getElementById('visionModel');
+        const gImageUrl = document.getElementById('gImageUrl');
+        const gImageKey = document.getElementById('gImageKey');
+        const gModel = document.getElementById('gModel');
+        const gPromptTemplate = document.getElementById('gPromptTemplate');
+        const naiImageUrl = document.getElementById('naiImageUrl');
+        const naiImageKey = document.getElementById('naiImageKey');
+        const naiModel = document.getElementById('naiModel');
+        const naiPromptTemplate = document.getElementById('naiPromptTemplate');
+        const chatStatus = document.getElementById('chatStatus');
+        const visionStatus = document.getElementById('visionStatus');
+        const gStatus = document.getElementById('gStatus');
+        const naiStatus = document.getElementById('naiStatus');
+
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            chatUrl.value = apiConfig.chatUrl; chatKey.value = apiConfig.chatKey; chatModel.value = apiConfig.chatModel;
+            systemPrompt.value = apiConfig.systemPrompt || '';
+            streamEnabled.checked = apiConfig.streamEnabled;
+            temperature.value = apiConfig.temperature;
+            topP.value = apiConfig.topP;
+            toolCallEnabled.checked = apiConfig.toolCallEnabled;
+            visionUrl.value = apiConfig.visionUrl; visionKey.value = apiConfig.visionKey; visionModel.value = apiConfig.visionModel;
+            gImageUrl.value = apiConfig.gImageUrl; gImageKey.value = apiConfig.gImageKey; gModel.value = apiConfig.gModel; gPromptTemplate.value = apiConfig.gPromptTemplate;
+            naiImageUrl.value = apiConfig.naiImageUrl; naiImageKey.value = apiConfig.naiImageKey; naiModel.value = apiConfig.naiModel; naiPromptTemplate.value = apiConfig.naiPromptTemplate;
+            chatStatus.textContent = ''; visionStatus.textContent = ''; gStatus.textContent = ''; naiStatus.textContent = '';
+            modal.classList.add('active');
+        });
+        document.getElementById('cancelBtn').addEventListener('click', () => modal.classList.remove('active'));
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+
+        const modelSelectModal = document.getElementById('modelSelectModal');
+        const modelListContainer = document.getElementById('modelListContainer');
+        document.getElementById('modelSelectCancelBtn').addEventListener('click', () => modelSelectModal.classList.remove('active'));
+        function openModelSelect(models, targetInput) {
+            modelListContainer.innerHTML = '';
+            models.forEach((modelName, index) => {
+                const div = document.createElement('div');
+                div.className = 'model-list-item';
+                if (modelName === targetInput.value) div.classList.add('selected');
+                div.textContent = `${index + 1}. ${modelName}`;
+                div.onclick = () => { targetInput.value = modelName; modelSelectModal.classList.remove('active'); };
+                modelListContainer.appendChild(div);
+            });
+            modelSelectModal.classList.add('active');
+        }
+
+        async function fetchModels(url, key, statusEl, targetInput) {
+            if (!url || !key) { alert('请先填写地址和 Key'); return; }
+            let modelsUrl = url.replace(/\/chat\/completions\/?$/, '').replace(/\/images\/generations\/?$/, '') + '/models';
+            statusEl.textContent = '正在拉取...';
+            try {
+                const res = await fetch(modelsUrl, { headers: { 'Authorization': `Bearer ${key}` } });
+                const data = await res.json();
+                let list = [];
+                if (data.data && Array.isArray(data.data)) list = data.data.map(m => m.id);
+                else if (data.models && Array.isArray(data.models)) list = data.models.map(m => m.id || m.name);
+                else if (Array.isArray(data)) list = data.map(m => m.id || m.name || m);
+                else throw new Error('无法识别的数据格式');
+                if (list.length === 0) throw new Error('返回的模型列表为空');
+                statusEl.textContent = `✅ 成功拉取 ${list.length} 个模型`;
+                openModelSelect(list, targetInput);
+            } catch (err) { statusEl.textContent = '❌ 拉取失败: ' + err.message; }
+        }
+
+        document.getElementById('fetchChatModelsBtn').addEventListener('click', () => fetchModels(chatUrl.value.trim(), chatKey.value.trim(), chatStatus, chatModel));
+        document.getElementById('fetchVisionModelsBtn').addEventListener('click', () => fetchModels(visionUrl.value.trim(), visionKey.value.trim(), visionStatus, visionModel));
+        document.getElementById('fetchGImageModelsBtn').addEventListener('click', () => fetchModels(gImageUrl.value.trim(), gImageKey.value.trim(), gStatus, gModel));
+        document.getElementById('fetchNaiImageModelsBtn').addEventListener('click', () => fetchModels(naiImageUrl.value.trim(), naiImageKey.value.trim(), naiStatus, naiModel));
+
+        async function testConnection(url, key, model, statusEl) {
+            if (!url || !key || !model) { alert('请填完配置'); return; }
+            statusEl.textContent = '测试中...';
+            try {
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify({ model: model, messages: [{ role: 'user', content: 'hi' }], stream: false }) });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                statusEl.textContent = `✅ 测试成功！回复: "${data.choices[0].message.content.substring(0, 15)}..."`;
+            } catch (err) { statusEl.textContent = '❌ 测试失败: ' + err.message; }
+        }
+        document.getElementById('testChatBtn').addEventListener('click', () => testConnection(chatUrl.value.trim(), chatKey.value.trim(), chatModel.value.trim(), chatStatus));
+        document.getElementById('testVisionBtn').addEventListener('click', () => testConnection(visionUrl.value.trim(), visionKey.value.trim(), visionModel.value.trim(), visionStatus));
+
+        async function testImageGeneration(url, key, model, statusEl) {
+            if (!url || !key || !model) { alert('请填完生图配置'); return; }
+            statusEl.textContent = '正在测试生图...';
+            const requestData = { model: model, prompt: "a cute cat", n: 1, size: "1024x1024" };
+            try {
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify(requestData) });
+                if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `HTTP ${res.status}`); }
+                const data = await res.json();
+                let hasImage = false;
+                if (data.data && data.data[0] && (data.data[0].url || data.data[0].b64_json)) hasImage = true;
+                else if (data.images && data.images[0]) hasImage = true;
+                if (hasImage) statusEl.textContent = '✅ 测试成功！AI 已返回图片。';
+                else throw new Error('返回格式错误，没有找到图片');
+            } catch (err) { statusEl.textContent = '❌ 测试失败: ' + err.message; }
+        }
+        document.getElementById('testGImageBtn').addEventListener('click', () => testImageGeneration(gImageUrl.value.trim(), gImageKey.value.trim(), gModel.value.trim(), gStatus));
+        document.getElementById('testNaiImageBtn').addEventListener('click', () => testImageGeneration(naiImageUrl.value.trim(), naiImageKey.value.trim(), naiModel.value.trim(), naiStatus));
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            apiConfig.chatUrl = chatUrl.value.trim(); apiConfig.chatKey = chatKey.value.trim(); apiConfig.chatModel = chatModel.value.trim();
+            apiConfig.systemPrompt = systemPrompt.value.trim();
+            apiConfig.streamEnabled = streamEnabled.checked;
+            apiConfig.temperature = parseFloat(temperature.value);
+            apiConfig.topP = parseFloat(topP.value);
+            apiConfig.toolCallEnabled = toolCallEnabled.checked;
+            apiConfig.visionUrl = visionUrl.value.trim(); apiConfig.visionKey = visionKey.value.trim(); apiConfig.visionModel = visionModel.value.trim();
+            apiConfig.gImageUrl = gImageUrl.value.trim(); apiConfig.gImageKey = gImageKey.value.trim(); apiConfig.gModel = gModel.value.trim(); apiConfig.gPromptTemplate = gPromptTemplate.value.trim();
+            apiConfig.naiImageUrl = naiImageUrl.value.trim(); apiConfig.naiImageKey = naiImageKey.value.trim(); apiConfig.naiModel = naiModel.value.trim(); apiConfig.naiPromptTemplate = naiPromptTemplate.value.trim();
+            localStorage.setItem('my_ai_config', JSON.stringify(apiConfig)); modal.classList.remove('active'); alert('配置已保存！');
+        });
+
+        // ================= 4. 生图与图片上传 =================
+        const drawBtn = document.getElementById('drawBtn');
+        const tagG = document.getElementById('tagG');
+        const tagNai = document.getElementById('tagNai');
+        drawBtn.addEventListener('click', () => {
+            isDrawMode = !isDrawMode;
+            if (isDrawMode) { drawBtn.classList.add('active'); drawBtn.textContent = '🖌️'; inputBoxWrapper.classList.add('draw-mode'); userInput.placeholder = '输入生图提示词...'; }
+            else { drawBtn.classList.remove('active'); drawBtn.textContent = '🎨'; inputBoxWrapper.classList.remove('draw-mode'); userInput.placeholder = '发消息或图片...'; }
+        });
+        tagG.addEventListener('click', () => { drawEngine = 'g'; tagG.classList.add('active'); tagNai.classList.remove('active'); });
+        tagNai.addEventListener('click', () => { drawEngine = 'nai'; tagNai.classList.add('active'); tagG.classList.remove('active'); });
+
+        document.getElementById('uploadBtn').addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (!files.length) return;
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (event) => { pendingImages.push(event.target.result); renderImagePreviews(); };
+                reader.readAsDataURL(file);
+            });
+            fileInput.value = '';
+        });
+        function renderImagePreviews() {
+            imagePreviewArea.innerHTML = '';
+            pendingImages.forEach((imgSrc, index) => {
+                const div = document.createElement('div'); div.className = 'preview-item';
+                div.innerHTML = `<img src="${imgSrc}"><button class="remove-img" onclick="removeImage(${index})">×</button>`;
+                imagePreviewArea.appendChild(div);
+            });
+        }
+        window.removeImage = (index) => { pendingImages.splice(index, 1); renderImagePreviews(); };
+
+        // ================= 5. 核心 API 请求 =================
+        async function generateImage(prompt, engine = 'g') {
+            let targetUrl, targetKey, targetModel, promptPrefix;
+            if (engine === 'g') { targetUrl = apiConfig.gImageUrl; targetKey = apiConfig.gImageKey; targetModel = apiConfig.gModel; promptPrefix = apiConfig.gPromptTemplate; }
+            else { targetUrl = apiConfig.naiImageUrl; targetKey = apiConfig.naiImageKey; targetModel = apiConfig.naiModel; promptPrefix = apiConfig.naiPromptTemplate; }
+            if (!targetKey || !targetUrl || !targetModel) throw new Error(`生图配置不完整 (${engine})`);
+            const finalPrompt = promptPrefix ? `${promptPrefix}, ${prompt}` : prompt;
+            const requestData = { model: targetModel, prompt: finalPrompt, n: 1, size: "1024x1024" };
+            const res = await fetch(targetUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${targetKey}` }, body: JSON.stringify(requestData) });
+            if (!res.ok) { const errData = await res.json().catch(() => ({})); throw new Error(`生图接口错误 ${res.status}: ${errData.error?.message || '未知错误'}`); }
+            const data = await res.json();
+            let imageSrc = '';
+            if (data.data && data.data[0]) { if (data.data[0].url) imageSrc = data.data[0].url; else if (data.data[0].b64_json) imageSrc = `data:image/png;base64,${data.data[0].b64_json}`; }
+            else if (data.images && data.images[0]) { imageSrc = data.images[0]; }
+            else { throw new Error('生图返回格式无法识别'); }
+            return imageSrc;
+        }
+
+        async function sendMessage(isRegenerate = false) {
+            const text = userInput.value.trim();
+            const hasImages = pendingImages.length > 0;
+            if (text === '' && !hasImages && !isDrawMode && !isRegenerate) return;
+
+            if (isDrawMode && !isRegenerate) {
+                if (!text) { alert('请输入你想生成的图片描述'); return; }
+                const chat = chats.find(c => c.id === currentChatId);
+                chat.messages.push({ sender: 'user', text: `[${drawEngine === 'g' ? 'G' : 'NAI'}生图] ${text}` });
+                if (chat.title === '新对话') { chat.title = `生图: ${text.substring(0, 6)}...`; chatTitle.textContent = chat.title; }
+                userInput.value = ''; renderMessages();
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'message bot'; loadingDiv.textContent = `🎨 正在绘制...`;
+                loadingDiv.id = 'loading-msg'; chatContent.appendChild(loadingDiv); chatContent.scrollTop = chatContent.scrollHeight;
+                try {
+                    const imageSrc = await generateImage(text, drawEngine);
+                    document.getElementById('loading-msg')?.remove();
+                    chat.messages.push({ sender: 'bot', text: `[${drawEngine === 'g' ? 'G' : 'NAI'}生成的图片]`, images: [imageSrc] });
+                    renderMessages();
+                } catch (error) {
+                    document.getElementById('loading-msg')?.remove();
+                    chat.messages.push({ sender: 'bot', text: '生图失败：' + error.message }); renderMessages();
+                }
+                return; 
+            }
+
+            let targetUrl, targetKey, targetModel, isVisionRequest = false;
+            if (hasImages) {
+                if (!apiConfig.visionKey || !apiConfig.visionUrl || !apiConfig.visionModel) { alert('识图配置不完整！'); return; }
+                targetUrl = apiConfig.visionUrl; targetKey = apiConfig.visionKey; targetModel = apiConfig.visionModel; isVisionRequest = true;
+            } else {
+                if (!apiConfig.chatKey || !apiConfig.chatUrl || !apiConfig.chatModel) { alert('请先去设置里填写聊天配置！'); return; }
+                targetUrl = apiConfig.chatUrl; targetKey = apiConfig.chatKey; targetModel = apiConfig.chatModel;
+            }
+
+            const chat = chats.find(c => c.id === currentChatId);
+            
+            if (isRegenerate) {
+                for (let i = chat.messages.length - 1; i >= 0; i--) {
+                    if (chat.messages[i].sender === 'bot') { chat.messages.splice(i, 1); break; }
+                }
+                renderMessages();
+            }
+
+            if (!isRegenerate) {
+                let messageContent;
+                if (isVisionRequest) {
+                    messageContent = [];
+                    if (text) messageContent.push({ type: 'text', text: text });
+                    else messageContent.push({ type: 'text', text: '看看这张图。' });
+                    pendingImages.forEach(imgSrc => messageContent.push({ type: 'image_url', image_url: { url: imgSrc } }));
+                } else { messageContent = text; }
+
+                chat.messages.push({ sender: 'user', text: text, images: pendingImages.slice() });
+                if (chat.title === '新对话') {
+                    let titleText = text || '图片消息';
+                    chat.title = titleText.substring(0, 8) + (titleText.length > 8 ? '...' : '');
+                    chatTitle.textContent = chat.title;
+                }
+                userInput.value = ''; pendingImages = []; renderImagePreviews(); renderMessages();
+            }
+
+            let requestMessages = [];
+            if (apiConfig.systemPrompt) requestMessages.push({ role: 'system', content: apiConfig.systemPrompt });
+
+            chat.messages.forEach((msg, index) => {
+                if (index === chat.messages.length - 1 && !isRegenerate) {
+                    let lastMsg = chat.messages[chat.messages.length - 1];
+                    let content;
+                    if (lastMsg.images && lastMsg.images.length > 0) {
+                        content = [{ type: 'text', text: lastMsg.text || '看看这张图。' }];
+                        lastMsg.images.forEach(img => content.push({ type: 'image_url', image_url: { url: img } }));
+                    } else { content = lastMsg.text; }
+                    requestMessages.push({ role: 'user', content: content });
+                } else {
+                    requestMessages.push({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text || '...' });
+                }
+            });
+
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message bot'; loadingDiv.textContent = isVisionRequest ? '正在识别图片...' : '正在思考...';
+            loadingDiv.id = 'loading-msg'; chatContent.appendChild(loadingDiv); chatContent.scrollTop = chatContent.scrollHeight;
+
+            const requestData = { 
+                model: targetModel, 
+                messages: requestMessages, 
+                stream: apiConfig.streamEnabled,
+                temperature: apiConfig.temperature,
+                top_p: apiConfig.topP
+            };
+            if (apiConfig.toolCallEnabled && !isVisionRequest) {
+                requestData.tools = [{ type: "function", function: { name: "generate_image", description: "当用户要求你画一张图、生成图片、或者你想用图片来回复用户时，调用这个工具。参数是图片的详细描述。", parameters: { type: "object", properties: { prompt: { type: "string", description: "生图的详细提示词，描述你想画的画面。" } }, required: ["prompt"] } } }];
+                requestData.tool_choice = "auto";
+            }
+
+            try {
+                const response = await fetch(targetUrl, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${targetKey}` },
+                    body: JSON.stringify(requestData)
+                });
+                if (!response.ok) { const errData = await response.json().catch(() => ({})); throw new Error(`错误 ${response.status}: ${errData.error?.message || '未知错误'}`); }
+
+                if (apiConfig.streamEnabled) {
+                    document.getElementById('loading-msg')?.remove();
+                    const streamDiv = document.createElement('div');
+                    streamDiv.className = 'message bot';
+                    streamDiv.id = 'stream-msg';
+                    chatContent.appendChild(streamDiv);
+                    chatContent.scrollTop = chatContent.scrollHeight;
+                    
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    let fullText = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const dataStr = line.slice(6);
+                                if (dataStr === '[DONE]') continue;
+                                try {
+                                    const data = JSON.parse(dataStr);
+                                    const delta = data.choices[0]?.delta?.content || '';
+                                    if (delta) {
+                                        fullText += delta;
+                                        streamDiv.innerHTML = marked.parse(fullText);
+                                        chatContent.scrollTop = chatContent.scrollHeight;
+                                    }
+                                } catch (e) { }
+                            }
+                        }
+                    }
+                    document.getElementById('stream-msg')?.remove();
+                    chat.messages.push({ sender: 'bot', text: fullText });
+                    renderMessages();
+                } 
+                else {
+                    const data = await response.json();
+                    const choice = data.choices[0];
+                    if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls) {
+                        const toolCall = choice.message.tool_calls[0];
+                        const args = JSON.parse(toolCall.function.arguments);
+                        document.getElementById('loading-msg')?.remove();
+                        chat.messages.push({ sender: 'bot', text: `🎨 我决定画一张图：${args.prompt}` });
+                        renderMessages();
+                        const drawLoadingDiv = document.createElement('div');
+                        drawLoadingDiv.className = 'message bot'; drawLoadingDiv.textContent = '🖌️ 正在调用生图引擎...';
+                        drawLoadingDiv.id = 'draw-loading-msg'; chatContent.appendChild(drawLoadingDiv); chatContent.scrollTop = chatContent.scrollHeight;
+                        try {
+                            const imageSrc = await generateImage(args.prompt, 'g');
+                            document.getElementById('draw-loading-msg')?.remove();
+                            chat.messages.push({ sender: 'bot', text: `[AI主动生成的图片]`, images: [imageSrc] });
+                            renderMessages();
+                        } catch (drawError) {
+                            document.getElementById('draw-loading-msg')?.remove();
+                            chat.messages.push({ sender: 'bot', text: '画图失败：' + drawError.message }); renderMessages();
+                        }
+                    } else {
+                        const aiReply = choice.message.content;
+                        document.getElementById('loading-msg')?.remove();
+                        chat.messages.push({ sender: 'bot', text: aiReply }); renderMessages();
+                    }
+                }
+            } catch (error) {
+                document.getElementById('loading-msg')?.remove();
+                document.getElementById('stream-msg')?.remove();
+                chat.messages.push({ sender: 'bot', text: '请求失败：' + error.message }); renderMessages();
+            }
+        }
+
+        document.getElementById('sendBtn').addEventListener('click', () => sendMessage(false));
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(false); });
+
+        // ================= 6. 侧边栏与长按菜单 =================
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            if (sidebarOpen) { sidebar.classList.add('open'); overlay.classList.add('active'); renderChatList(); }
+            else { sidebar.classList.remove('open'); overlay.classList.remove('active'); contextMenu.classList.remove('active'); }
+        }
+        document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
+        document.getElementById('sidebarOverlay').addEventListener('click', () => { toggleSidebar(); contextMenu.classList.remove('active'); });
+
+        function renderChatList() {
+            chatListEl.innerHTML = '';
+            chats.forEach(chat => {
+                const div = document.createElement('div');
+                div.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
+                div.textContent = chat.title;
+                let longPressTimer = null, isLongPress = false;
+                div.addEventListener('touchstart', (e) => {
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => { isLongPress = true; openContextMenu(e, chat.id); if (navigator.vibrate) navigator.vibrate(50); }, 500);
+                }, { passive: true });
+                div.addEventListener('touchmove', () => clearTimeout(longPressTimer), { passive: true });
+                div.addEventListener('touchend', () => { clearTimeout(longPressTimer); if (!isLongPress) switchChat(chat.id); }, { passive: true });
+                div.addEventListener('contextmenu', (e) => { e.preventDefault(); openContextMenu(e, chat.id); });
+                chatListEl.appendChild(div);
+            });
+        }
+
+        function openContextMenu(e, id) {
+            contextMenuTargetId = id;
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+            else { clientX = e.clientX; clientY = e.clientY; }
+            let menuX = clientX, menuY = clientY;
+            if (menuX + 150 > window.innerWidth) menuX = window.innerWidth - 150;
+            if (menuY + 100 > window.innerHeight) menuY = window.innerHeight - 100;
+            contextMenu.style.left = menuX + 'px'; contextMenu.style.top = menuY + 'px';
+            contextMenu.classList.add('active');
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!contextMenu.contains(e.target) && !e.target.closest('.chat-item')) contextMenu.classList.remove('active');
+        });
+
+        function switchChat(id) {
+            currentChatId = id;
+            const chat = chats.find(c => c.id === id);
+            chatTitle.textContent = chat.title;
+            renderMessages();
+            if (sidebarOpen) toggleSidebar();
+        }
+
+        function createNewChat() {
+            const newId = chats.length > 0 ? Math.max(...chats.map(c => c.id)) + 1 : 1;
+            chats.push({ id: newId, title: '新对话', messages: [] });
+            switchChat(newId);
+        }
+        document.getElementById('newChatBtn').addEventListener('click', createNewChat);
+
+        document.getElementById('deleteChatBtn').addEventListener('click', () => {
+            const id = contextMenuTargetId;
+            const chat = chats.find(c => c.id === id);
+            if (!chat) return;
+            contextMenu.classList.remove('active');
+            if (confirm(`确定要删除 "${chat.title}" 吗？`)) {
+                chats = chats.filter(c => c.id !== id);
+                if (chats.length === 0) { chats.push({ id: 1, title: '新对话', messages: [] }); currentChatId = 1; }
+                else if (currentChatId === id) currentChatId = chats[0].id;
+                const currentChat = chats.find(c => c.id === currentChatId);
+                chatTitle.textContent = currentChat.title;
+                renderChatList(); renderMessages();
+            }
+        });
+
+        document.getElementById('renameChatBtn').addEventListener('click', () => {
+            const id = contextMenuTargetId;
+            const chat = chats.find(c => c.id === id);
+            if (!chat) return;
+            contextMenu.classList.remove('active');
+            renameInput.value = chat.title;
+            renameModal.classList.add('active');
+            renameInput.focus();
+        });
+        document.getElementById('renameCancelBtn').addEventListener('click', () => renameModal.classList.remove('active'));
+        document.getElementById('renameSaveBtn').addEventListener('click', () => {
+            const newName = renameInput.value.trim();
+            if (newName === '') { alert('名字不能为空'); return; }
+            const chat = chats.find(c => c.id === contextMenuTargetId);
+            if (chat) {
+                chat.title = newName;
+                if (currentChatId === contextMenuTargetId) chatTitle.textContent = newName;
+                renderChatList();
+            }
+            renameModal.classList.remove('active');
+        });
+        renameModal.addEventListener('click', (e) => { if (e.target === renameModal) renameModal.classList.remove('active'); });
+
+        // ================= 7. 渲染消息 =================
+        function renderMessages() {
+            const chat = chats.find(c => c.id === currentChatId);
+            chatContent.innerHTML = '';
+            if (chat.messages.length === 0) {
+                chatContent.appendChild(emptyState);
+            } else {
+                chat.messages.forEach((msg, msgIndex) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = `message-wrapper ${msg.sender}`;
+                    
+                    const div = document.createElement('div');
+                    div.className = `message ${msg.sender}`;
+                    let html = '';
+                    if (msg.images && msg.images.length > 0) msg.images.forEach(imgSrc => html += `<img src="${imgSrc}">`);
+                    if (msg.text) {
+                        if (msg.sender === 'bot') {
+                            if (msg.text.startsWith('[G生成的图片]') || msg.text.startsWith('[NAI生成的图片]') || msg.text.startsWith('[AI主动生成的图片]')) {
+                                html += `<div class="msg-text">${msg.text}</div>`;
+                            } else {
+                                html += `<div class="msg-text">${marked.parse(msg.text)}</div>`;
+                            }
+                        } else {
+                            html += `<div class="msg-text">${msg.text.replace(/\n/g, '<br>')}</div>`;
+                        }
+                    }
+                    div.innerHTML = html;
+                    wrapper.appendChild(div);
+
+                    if (msg.sender === 'bot') {
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.className = 'message-actions';
+                        const regenBtn = document.createElement('span');
+                        regenBtn.className = 'action-icon'; regenBtn.textContent = '🔄'; regenBtn.title = '重新生成';
+                        regenBtn.onclick = () => { if (msgIndex === chat.messages.length - 1) sendMessage(true); else alert('只有最后一条消息才能重新生成哦！'); };
+                        const copyBtn = document.createElement('span');
+                        copyBtn.className = 'action-icon'; copyBtn.textContent = '📋'; copyBtn.title = '复制';
+                        copyBtn.onclick = () => { navigator.clipboard.writeText(msg.text).then(() => alert('已复制！')).catch(() => { const ta = document.createElement('textarea'); ta.value = msg.text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert('已复制！'); }); };
+                        actionsDiv.appendChild(regenBtn);
+                        actionsDiv.appendChild(copyBtn);
+                        wrapper.appendChild(actionsDiv);
+                    }
+
+                    if (msg.sender === 'user') {
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.className = 'message-actions';
+                        const copyBtn = document.createElement('span');
+                        copyBtn.className = 'action-icon'; copyBtn.textContent = '📋'; copyBtn.title = '复制';
+                        copyBtn.onclick = () => { navigator.clipboard.writeText(msg.text).then(() => alert('已复制！')).catch(() => { const ta = document.createElement('textarea'); ta.value = msg.text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert('已复制！'); }); };
+                        actionsDiv.appendChild(copyBtn);
+                        wrapper.appendChild(actionsDiv);
+                    }
+
+                    chatContent.appendChild(wrapper);
+                });
+            }
+            chatContent.scrollTop = chatContent.scrollHeight;
+        }
+
+        // ================= 8. 侧滑手势 =================
+        let touchStartX = 0, touchStartY = 0;
+        const swipeZone = document.getElementById('swipeZone');
+        swipeZone.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
+        swipeZone.addEventListener('touchmove', (e) => {
+            if (!touchStartX) return;
+            let diffX = e.touches[0].clientX - touchStartX;
+            let diffY = e.touches[0].clientY - touchStartY;
+            if (Math.abs(diffX) > Math.abs(diffY) && diffX > 30) { if (!sidebarOpen) { toggleSidebar(); touchStartX = 0; } }
+        }, { passive: true });
+        swipeZone.addEventListener('touchend', () => { touchStartX = 0; touchStartY = 0; });
+
+        renderChatList(); renderMessages();
+    </script>
+</body>
+</html>
